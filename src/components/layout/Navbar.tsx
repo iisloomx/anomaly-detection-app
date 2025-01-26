@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Disclosure } from '@headlessui/react';
-import { MenuIcon, XIcon, SunIcon, MoonIcon } from '@heroicons/react/outline';
+import { Bars3Icon as MenuIcon, XMarkIcon as XIcon, SunIcon, MoonIcon } from '@heroicons/react/24/outline';
 
 const navigation = [
   { name: 'Dashboard', href: '/' },

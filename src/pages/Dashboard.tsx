@@ -10,9 +10,9 @@ import {
   Tooltip,
   Legend,
 } from 'chart.js';
-import { ChartSquareBarIcon, ExclamationIcon, ServerIcon, BellIcon } from '@heroicons/react/outline';
+import { ChartBarSquareIcon, ExclamationTriangleIcon, ServerStackIcon, BellAlertIcon } from '@heroicons/react/24/outline';
 import axios from 'axios';
-import MetricCard from '../components/dashboard/MetricCard';
+import MetricCard from '../components/dashboard/MetricCard.tsx';
 
 ChartJS.register(
   CategoryScale,
@@ -23,6 +23,23 @@ ChartJS.register(
   Tooltip,
   Legend
 );
+
+// Mock data for development
+const mockMetrics = {
+  totalLogs: 15234,
+  totalAnomalies: 127,
+  systemHealth: 98,
+  activeAlerts: 3,
+};
+
+const mockTimeSeriesData = {
+  labels: Array.from({ length: 7 }, (_, i) => {
+    const date = new Date();
+    date.setDate(date.getDate() - (6 - i));
+    return date.toLocaleDateString();
+  }),
+  anomalies: [12, 19, 15, 23, 17, 25, 14],
+};
 
 interface Metrics {
   totalLogs: number;
@@ -37,16 +54,8 @@ interface TimeSeriesData {
 }
 
 export default function Dashboard() {
-  const [metrics, setMetrics] = useState<Metrics>({
-    totalLogs: 0,
-    totalAnomalies: 0,
-    systemHealth: 0,
-    activeAlerts: 0,
-  });
-  const [timeSeriesData, setTimeSeriesData] = useState<TimeSeriesData>({
-    labels: [],
-    anomalies: [],
-  });
+  const [metrics, setMetrics] = useState<Metrics>(mockMetrics);
+  const [timeSeriesData, setTimeSeriesData] = useState<TimeSeriesData>(mockTimeSeriesData);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -54,13 +63,12 @@ export default function Dashboard() {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const [metricsResponse, timeSeriesResponse] = await Promise.all([
-          axios.get('http://localhost:8000/api/v1/data/metrics'),
-          axios.get('http://localhost:8000/api/v1/data/timeseries'),
-        ]);
-
-        setMetrics(metricsResponse.data);
-        setTimeSeriesData(timeSeriesResponse.data);
+        // Simulate API delay
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // Use mock data instead of API calls for now
+        setMetrics(mockMetrics);
+        setTimeSeriesData(mockTimeSeriesData);
       } catch (err) {
         setError('Failed to fetch dashboard data');
         console.error(err);
@@ -126,24 +134,24 @@ export default function Dashboard() {
         <MetricCard
           title="Total Logs"
           value={metrics.totalLogs.toLocaleString()}
-          icon={ChartSquareBarIcon}
+          icon={ChartBarSquareIcon}
         />
         <MetricCard
           title="Anomalies Detected"
           value={metrics.totalAnomalies.toLocaleString()}
-          icon={ExclamationIcon}
+          icon={ExclamationTriangleIcon}
           trend={{ value: 12, isPositive: false }}
         />
         <MetricCard
           title="System Health"
           value={`${metrics.systemHealth}%`}
-          icon={ServerIcon}
+          icon={ServerStackIcon}
           trend={{ value: 3, isPositive: true }}
         />
         <MetricCard
           title="Active Alerts"
           value={metrics.activeAlerts}
-          icon={BellIcon}
+          icon={BellAlertIcon}
         />
       </div>
 
