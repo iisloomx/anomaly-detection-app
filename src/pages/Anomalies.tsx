@@ -1,164 +1,277 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Pie } from 'react-chartjs-2';
-import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
-
-ChartJS.register(ArcElement, Tooltip, Legend);
+import { ExclamationTriangleIcon, CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/outline';
 
 interface Anomaly {
   id: string;
   timestamp: string;
-  type: string;
-  severity: 'low' | 'medium' | 'high' | 'critical';
-  description: string;
-  affectedSystem: string;
+  source: string;
+  content: {
+    event_type: string;
+    user_id: string;
+    ip_address: string;
+    status: string;
+    severity: string;
+    details: any;
+  };
+}
+
+interface FilterState {
+  severity: string;
+  event_type: string;
+  start_date: string;
+  end_date: string;
 }
 
 export default function Anomalies() {
   const [anomalies, setAnomalies] = useState<Anomaly[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [filters, setFilters] = useState<FilterState>({
+    severity: '',
+    event_type: '',
+    start_date: '',
+    end_date: ''
+  });
+
+  const severityLevels = ['low', 'medium', 'high'];
+  const eventTypes = ["login", "logout", "file_upload", "file_download", "error", "access_denied"];
+  const anomaliesPerPage = 10;
 
   useEffect(() => {
     const fetchAnomalies = async () => {
       try {
         setLoading(true);
-        const response = await axios.get('http://localhost:8000/api/v1/anomalies/anomalies');
+        const response = await axios.get('http://localhost:8000/api/v1/data/anomalies', {
+          params: {
+            page,
+            per_page: anomaliesPerPage,
+            ...filters
+          }
+        });
+
         setAnomalies(response.data);
+        setTotalPages(Math.ceil(response.headers['x-total-count'] / anomaliesPerPage) || 1);
+        setError(null);
       } catch (err) {
-        setError('Failed to fetch anomalies');
-        console.error(err);
+        console.error('Error fetching anomalies:', err);
+        setError('Failed to fetch anomalies. Please try again later.');
       } finally {
         setLoading(false);
       }
     };
 
     fetchAnomalies();
-  }, []);
+    
+    // Poll for new anomalies every 30 seconds
+    const pollInterval = setInterval(fetchAnomalies, 30000);
+    return () => clearInterval(pollInterval);
+  }, [page, filters]);
 
-  const severityCounts = anomalies.reduce((acc, anomaly) => {
-    acc[anomaly.severity] = (acc[anomaly.severity] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>);
-
-  const pieChartData = {
-    labels: Object.keys(severityCounts),
-    datasets: [
-      {
-        data: Object.values(severityCounts),
-        backgroundColor: [
-          'rgba(34, 197, 94, 0.6)',  // low - green
-          'rgba(234, 179, 8, 0.6)',  // medium - yellow
-          'rgba(249, 115, 22, 0.6)', // high - orange
-          'rgba(239, 68, 68, 0.6)',  // critical - red
-        ],
-        borderColor: [
-          'rgb(34, 197, 94)',
-          'rgb(234, 179, 8)',
-          'rgb(249, 115, 22)',
-          'rgb(239, 68, 68)',
-        ],
-        borderWidth: 1,
-      },
-    ],
+  const handleFilterChange = (e: React.ChangeEvent<HTMLSelectElement | HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setFilters(prev => ({ ...prev, [name]: value }));
+    setPage(1); // Reset to first page when filters change
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[50vh]">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
-      </div>
-    );
-  }
+  const getSeverityColor = (severity: string) => {
+    switch (severity.toLowerCase()) {
+      case 'high':
+        return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300';
+      case 'medium':
+        return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-300';
+      case 'low':
+        return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300';
+      default:
+        return 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300';
+    }
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleString();
+  };
 
   if (error) {
     return (
-      <div className="text-red-600 text-center py-8">
+      <div className="flex items-center justify-center min-h-screen text-red-600">
+        <ExclamationTriangleIcon className="h-6 w-6 mr-2" />
         {error}
       </div>
     );
   }
 
   return (
-    <div>
-      <h1 className="text-3xl font-bold mb-8">Anomalies</h1>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-        <div className="card">
-          <h2 className="text-xl font-semibold mb-4">Severity Distribution</h2>
-          <div className="h-64">
-            <Pie data={pieChartData} options={{ maintainAspectRatio: false }} />
-          </div>
-        </div>
-
-        <div className="card">
-          <h2 className="text-xl font-semibold mb-4">Summary</h2>
-          <div className="space-y-4">
-            {Object.entries(severityCounts).map(([severity, count]) => (
-              <div key={severity} className="flex justify-between items-center">
-                <span className="capitalize">{severity}</span>
-                <span className={`px-3 py-1 rounded-full text-sm font-medium
-                  ${severity === 'critical' ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' :
-                  severity === 'high' ? 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200' :
-                  severity === 'medium' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' :
-                  'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'}`}>
-                  {count}
-                </span>
-              </div>
-            ))}
-          </div>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="sm:flex sm:items-center sm:justify-between mb-8">
+        <h1 className="text-3xl font-bold">Anomalies</h1>
+        <div className="mt-4 sm:mt-0">
+          <span className="relative inline-flex rounded-md shadow-sm">
+            <button
+              type="button"
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+            >
+              <ExclamationTriangleIcon className="h-5 w-5 mr-2" />
+              Export Anomalies
+            </button>
+          </span>
         </div>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-          <thead className="bg-gray-50 dark:bg-gray-800">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                Timestamp
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                Type
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                Severity
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                Description
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
-                Affected System
-              </th>
-            </tr>
-          </thead>
-          <tbody className="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-700">
-            {anomalies.map((anomaly) => (
-              <tr key={anomaly.id}>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                  {new Date(anomaly.timestamp).toLocaleString()}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                  {anomaly.type}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full
-                    ${anomaly.severity === 'critical' ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' :
-                    anomaly.severity === 'high' ? 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200' :
-                    anomaly.severity === 'medium' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' :
-                    'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'}`}>
-                    {anomaly.severity}
-                  </span>
-                </td>
-                <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">
-                  {anomaly.description}
-                </td>
-                <td className="px-6 py-4 text-sm text-gray-500 dark:text-gray-400">
-                  {anomaly.affectedSystem}
-                </td>
+      {/* Filters */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <select
+          name="severity"
+          value={filters.severity}
+          onChange={handleFilterChange}
+          className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"
+        >
+          <option value="">All Severities</option>
+          {severityLevels.map(level => (
+            <option key={level} value={level}>{level}</option>
+          ))}
+        </select>
+
+        <select
+          name="event_type"
+          value={filters.event_type}
+          onChange={handleFilterChange}
+          className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"
+        >
+          <option value="">All Event Types</option>
+          {eventTypes.map(type => (
+            <option key={type} value={type}>{type}</option>
+          ))}
+        </select>
+
+        <input
+          type="datetime-local"
+          name="start_date"
+          value={filters.start_date}
+          onChange={handleFilterChange}
+          className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"
+        />
+
+        <input
+          type="datetime-local"
+          name="end_date"
+          value={filters.end_date}
+          onChange={handleFilterChange}
+          className="block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"
+        />
+      </div>
+
+      {/* Anomalies Table */}
+      <div className="bg-white dark:bg-gray-800 shadow rounded-lg overflow-hidden">
+        <div className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+            <thead className="bg-gray-50 dark:bg-gray-700">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  Timestamp
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  Event Type
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  User ID
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  IP Address
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  Severity
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  Details
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                  Actions
+                </th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+              {loading && anomalies.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-6 py-4 text-center">
+                    <div className="animate-pulse">Loading anomalies...</div>
+                  </td>
+                </tr>
+              ) : anomalies.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-6 py-4 text-center">
+                    No anomalies found
+                  </td>
+                </tr>
+              ) : (
+                anomalies.map((anomaly) => (
+                  <tr key={anomaly.id}>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-300">
+                      {formatDate(anomaly.timestamp)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-300">
+                      {anomaly.content.event_type}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-300">
+                      {anomaly.content.user_id}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-300">
+                      {anomaly.content.ip_address}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getSeverityColor(anomaly.content.severity)}`}>
+                        {anomaly.content.severity}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-900 dark:text-gray-300">
+                      <pre className="whitespace-pre-wrap">
+                        {JSON.stringify(anomaly.content.details, null, 2)}
+                      </pre>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-300">
+                      <div className="flex space-x-2">
+                        <button
+                          className="text-green-600 hover:text-green-900 dark:text-green-400 dark:hover:text-green-300"
+                          title="Mark as resolved"
+                        >
+                          <CheckCircleIcon className="h-5 w-5" />
+                        </button>
+                        <button
+                          className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300"
+                          title="Dismiss"
+                        >
+                          <XCircleIcon className="h-5 w-5" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Pagination */}
+      <div className="flex items-center justify-between mt-4">
+        <button
+          onClick={() => setPage(prev => Math.max(prev - 1, 1))}
+          disabled={page === 1}
+          className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+        >
+          Previous
+        </button>
+        <span className="text-sm text-gray-700 dark:text-gray-300">
+          Page {page} of {totalPages}
+        </span>
+        <button
+          onClick={() => setPage(prev => Math.min(prev + 1, totalPages))}
+          disabled={page === totalPages}
+          className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+        >
+          Next
+        </button>
       </div>
     </div>
   );

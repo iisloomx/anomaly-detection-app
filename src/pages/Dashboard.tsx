@@ -24,23 +24,6 @@ ChartJS.register(
   Legend
 );
 
-// Mock data for development
-const mockMetrics = {
-  totalLogs: 15234,
-  totalAnomalies: 127,
-  systemHealth: 98,
-  activeAlerts: 3,
-};
-
-const mockTimeSeriesData = {
-  labels: Array.from({ length: 7 }, (_, i) => {
-    const date = new Date();
-    date.setDate(date.getDate() - (6 - i));
-    return date.toLocaleDateString();
-  }),
-  anomalies: [12, 19, 15, 23, 17, 25, 14],
-};
-
 interface Metrics {
   totalLogs: number;
   totalAnomalies: number;
@@ -54,8 +37,16 @@ interface TimeSeriesData {
 }
 
 export default function Dashboard() {
-  const [metrics, setMetrics] = useState<Metrics>(mockMetrics);
-  const [timeSeriesData, setTimeSeriesData] = useState<TimeSeriesData>(mockTimeSeriesData);
+  const [metrics, setMetrics] = useState<Metrics>({
+    totalLogs: 0,
+    totalAnomalies: 0,
+    systemHealth: 0,
+    activeAlerts: 0
+  });
+  const [timeSeriesData, setTimeSeriesData] = useState<TimeSeriesData>({
+    labels: [],
+    anomalies: []
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -63,21 +54,59 @@ export default function Dashboard() {
     const fetchData = async () => {
       try {
         setLoading(true);
-        // Simulate API delay
-        await new Promise(resolve => setTimeout(resolve, 1000));
         
-        // Use mock data instead of API calls for now
-        setMetrics(mockMetrics);
-        setTimeSeriesData(mockTimeSeriesData);
+        // Get start and end dates for the last 7 days
+        const endDate = new Date();
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - 7);
+
+        // Fetch metrics and timeseries data
+        const [metricsResponse, timeSeriesResponse] = await Promise.all([
+          axios.get('http://localhost:8000/api/v1/data/metrics', {
+            params: {
+              start_time: startDate.toISOString(),
+              end_time: endDate.toISOString()
+            }
+          }),
+          axios.get('http://localhost:8000/api/v1/data/timeseries', {
+            params: {
+              start_time: startDate.toISOString(),
+              end_time: endDate.toISOString()
+            }
+          })
+        ]);
+
+        // Format metrics data
+        setMetrics({
+          totalLogs: metricsResponse.data.total_logs,
+          totalAnomalies: metricsResponse.data.total_anomalies,
+          systemHealth: metricsResponse.data.system_health,
+          activeAlerts: metricsResponse.data.active_alerts
+        });
+
+        // Format time series data
+        setTimeSeriesData({
+          labels: timeSeriesResponse.data.labels.map((date: string) => 
+            new Date(date).toLocaleDateString()
+          ),
+          anomalies: timeSeriesResponse.data.anomalies
+        });
+
       } catch (err) {
-        setError('Failed to fetch dashboard data');
-        console.error(err);
+        console.error('Error fetching dashboard data:', err);
+        setError('Failed to fetch dashboard data. Please try again later.');
       } finally {
         setLoading(false);
       }
     };
 
     fetchData();
+
+    // Set up polling every 30 seconds
+    const pollInterval = setInterval(fetchData, 30000);
+
+    // Cleanup interval on component unmount
+    return () => clearInterval(pollInterval);
   }, []);
 
   const chartOptions = {
@@ -90,11 +119,31 @@ export default function Dashboard() {
         display: true,
         text: 'Anomalies Over Time',
       },
+      tooltip: {
+        callbacks: {
+          title: (context: any) => {
+            return `Date: ${context[0].label}`;
+          },
+          label: (context: any) => {
+            return `Anomalies: ${context.raw}`;
+          }
+        }
+      }
     },
     scales: {
       y: {
         beginAtZero: true,
+        title: {
+          display: true,
+          text: 'Number of Anomalies'
+        }
       },
+      x: {
+        title: {
+          display: true,
+          text: 'Date'
+        }
+      }
     },
   };
 
@@ -106,6 +155,7 @@ export default function Dashboard() {
         data: timeSeriesData.anomalies,
         borderColor: 'rgb(14, 165, 233)',
         backgroundColor: 'rgba(14, 165, 233, 0.5)',
+        tension: 0.3
       },
     ],
   };
@@ -144,7 +194,7 @@ export default function Dashboard() {
         />
         <MetricCard
           title="System Health"
-          value={`${metrics.systemHealth}%`}
+          value={`${Math.round(metrics.systemHealth)}%`}
           icon={ServerStackIcon}
           trend={{ value: 3, isPositive: true }}
         />
@@ -155,7 +205,7 @@ export default function Dashboard() {
         />
       </div>
 
-      <div className="card">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
         <Line options={chartOptions} data={chartData} />
       </div>
     </div>

@@ -5,6 +5,7 @@
   "dependencies": {
     "@headlessui/react": "^2.2.0",
     "@heroicons/react": "^2.2.0",
+    "@types/react-router-dom": "^5.3.3",
     "axios": "^1.7.9",
     "chart.js": "^4.4.7",
     "cra-template-typescript": "1.2.0",
